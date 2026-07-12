@@ -1,0 +1,36 @@
+# Design documents (not tracked)
+/design/
+
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary, build output
+*.test
+*.out
+/tmp/
+
+# Go workspace
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+/vendor/
+
+# Coverage
+*.coverprofile
+coverage.txt
+coverage.out
