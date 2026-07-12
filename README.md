@@ -1,8 +1,8 @@
-# GlanceDB
+# GolanceDB
 
 **A Go-based vector database engine built on the Lance columnar format.**
 
-GlanceDB is an open-source, embedded vector database engine implemented in pure Go, designed for AI/ML workloads. It provides columnar storage, vector similarity search, scalar filtering, and MVCC versioning — all without external dependencies or CGO.
+GolanceDB is an open-source, embedded vector database engine implemented in pure Go, designed for AI/ML workloads. It provides columnar storage, vector similarity search, scalar filtering, and MVCC versioning — all without external dependencies or CGO.
 
 > **Design Philosophy**: Pure Go implementation — no Rust/CGO calls to the Lance core library, zero external runtime dependencies (beyond OS libraries).
 
