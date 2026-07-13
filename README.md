@@ -153,8 +153,9 @@ glancedb/
 ├── table/        # Table/Dataset layer (Manifest, Fragment, Schema)
 ├── encode/       # Columnar encoding (Mini-Block, compression)
 ├── storage/      # Storage engine (ObjectStore, BufferPool)
+├── distance/     # Shared distance computation (metrics, TopK)
 ├── query/        # Query engine (vector search, scalar filter)
-├── index/        # Index system (IVFFlat, distance metrics)
+├── index/        # Index system (IVFFlat, Flat, Index interface)
 ├── proto/        # Protobuf definitions
 ├── benchmark/    # Performance benchmarks
 └── examples/     # Usage examples

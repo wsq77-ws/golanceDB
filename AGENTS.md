@@ -60,15 +60,19 @@ glancedb/
 │   ├── local_fs.go        # 本地文件系统实现
 │   ├── buffer_pool.go     # Buffer Pool（LRU 缓存）
 │   └── file_footer.go     # File Footer 读写
+├── distance/     # 公共距离计算
+│   ├── types.go           # DistanceMetric, SearchResult
+│   ├── distance.go        # Distance, Distances, TopK 函数
+│   └── distance_test.go
 ├── query/        # 查询引擎
 │   ├── brute_force.go     # 暴力向量搜索
 │   ├── scan_filter.go     # 标量过滤（谓词下推）
 │   ├── hybrid_search.go   # 混合搜索
 │   └── reranker.go        # 结果重排序
 ├── index/        # 索引系统
+│   ├── interface.go       # Index 接口定义
 │   ├── ivf_flat.go        # IVF + Flat 索引
-│   ├── ivf_build.go       # IVF 异步构建器
-│   └── distance.go        # 距离计算（余弦、欧氏、点积）
+│   └── flat.go            # 暴力基线索引
 ├── proto/        # Protobuf 定义
 │   ├── manifest.proto
 │   └── table.proto

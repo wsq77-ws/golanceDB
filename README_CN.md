@@ -152,8 +152,9 @@ glancedb/
 ├── table/        # 表/Dataset 层（Manifest, Fragment, Schema）
 ├── encode/       # 列式编码（Mini-Block, 压缩）
 ├── storage/      # 存储引擎（ObjectStore, BufferPool）
+├── distance/     # 公共距离计算（度量函数, TopK 排序）
 ├── query/        # 查询引擎（向量搜索, 标量过滤）
-├── index/        # 索引系统（IVFFlat, 距离计算）
+├── index/        # 索引系统（IVFFlat, Flat, Index 接口）
 ├── proto/        # Protobuf 协议定义
 ├── benchmark/    # 性能基准测试
 └── examples/     # 使用示例
