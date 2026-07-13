@@ -1,16 +1,6 @@
 package index
 
-// DistanceMetric represents distance/similarity metrics for vector search.
-type DistanceMetric int32
-
-const (
-	// DistanceCosine is 1 - cosine_similarity (0 = identical, 2 = opposite).
-	DistanceCosine DistanceMetric = 1
-	// DistanceEuclidean is the L2 distance.
-	DistanceEuclidean DistanceMetric = 2
-	// DistanceDotProduct returns the negative dot product (smaller = more similar).
-	DistanceDotProduct DistanceMetric = 3
-)
+import "github.com/glancedb/glancedb/distance"
 
 // VectorRecord pairs a row ID with its vector.
 type VectorRecord struct {
@@ -29,10 +19,16 @@ const (
 )
 
 // SearchResult is a single search hit.
-type SearchResult struct {
-	RowID int64
-	Score float64
-}
+type SearchResult = distance.SearchResult
+
+// DistanceMetric is re-exported from the distance package for convenience.
+type DistanceMetric = distance.DistanceMetric
+
+const (
+	DistanceCosine     = distance.DistanceCosine
+	DistanceEuclidean  = distance.DistanceEuclidean
+	DistanceDotProduct = distance.DistanceDotProduct
+)
 
 // IndexStats holds index build statistics.
 type IndexStats struct {

@@ -1,4 +1,4 @@
-package index
+package distance
 
 import (
 	"fmt"
@@ -12,7 +12,7 @@ import (
 // For DotProduct: returns the negative dot product (so smaller = more similar).
 func Distance(a, b []float32, metric DistanceMetric) (float64, error) {
 	if len(a) != len(b) {
-		return 0, fmt.Errorf("index: vector length mismatch: %d vs %d", len(a), len(b))
+		return 0, fmt.Errorf("distance: vector length mismatch: %d vs %d", len(a), len(b))
 	}
 	switch metric {
 	case DistanceCosine:
@@ -25,7 +25,7 @@ func Distance(a, b []float32, metric DistanceMetric) (float64, error) {
 			normB += bf * bf
 		}
 		if normA == 0 || normB == 0 {
-			return 0, fmt.Errorf("index: zero-norm vector in cosine distance")
+			return 0, fmt.Errorf("distance: zero-norm vector in cosine distance")
 		}
 		sim := dot / (math.Sqrt(normA) * math.Sqrt(normB))
 		return 1 - sim, nil
@@ -43,7 +43,7 @@ func Distance(a, b []float32, metric DistanceMetric) (float64, error) {
 		}
 		return -dot, nil
 	default:
-		return 0, fmt.Errorf("index: unknown distance metric: %d", metric)
+		return 0, fmt.Errorf("distance: unknown metric: %d", metric)
 	}
 }
 
@@ -53,7 +53,7 @@ func Distances(query []float32, vectors [][]float32, metric DistanceMetric) ([]f
 	for i, v := range vectors {
 		d, err := Distance(query, v, metric)
 		if err != nil {
-			return nil, fmt.Errorf("index: %w", err)
+			return nil, fmt.Errorf("distance: %w", err)
 		}
 		result[i] = d
 	}

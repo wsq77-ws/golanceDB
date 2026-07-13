@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/glancedb/glancedb/distance"
 	"github.com/glancedb/glancedb/storage"
 )
 
@@ -73,13 +74,13 @@ func (idx *FlatIndex) Search(ctx context.Context, query []float32, k int, metric
 	}
 	results := make([]SearchResult, len(idx.vectors))
 	for i, v := range idx.vectors {
-		d, err := Distance(query, v.Vector, metric)
+		d, err := distance.Distance(query, v.Vector, metric)
 		if err != nil {
 			return nil, fmt.Errorf("index: %w", err)
 		}
 		results[i] = SearchResult{RowID: v.RowID, Score: d}
 	}
-	return TopK(results, k), nil
+	return distance.TopK(results, k), nil
 }
 
 // flatSnapshot is the JSON-serializable form of a FlatIndex.

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"sort"
 
+	"github.com/glancedb/glancedb/distance"
 	"github.com/glancedb/glancedb/storage"
 )
 
@@ -59,7 +60,7 @@ func assignVectors(vectors []VectorRecord, centroids [][]float32, metric Distanc
 		bestC := 0
 		bestD := math.MaxFloat64
 		for ci, c := range centroids {
-			d, err := Distance(v.Vector, c, metric)
+			d, err := distance.Distance(v.Vector, c, metric)
 			if err != nil {
 				return nil, fmt.Errorf("index: %w", err)
 			}
@@ -135,7 +136,7 @@ func (idx *IVFFlatIndex) Build(ctx context.Context, vectors []VectorRecord) erro
 			for d := 0; d < dim; d++ {
 				newCentroids[ci][d] /= float32(counts[ci])
 			}
-			md, err := Distance(centroids[ci], newCentroids[ci], DistanceEuclidean)
+			md, err := distance.Distance(centroids[ci], newCentroids[ci], DistanceEuclidean)
 			if err == nil {
 				moved += md
 			}
@@ -204,7 +205,7 @@ func (idx *IVFFlatIndex) Search(ctx context.Context, query []float32, k int, met
 	}
 	cdist := make([]centDist, idx.numPartitions)
 	for i, c := range idx.centroids {
-		d, err := Distance(query, c, metric)
+		d, err := distance.Distance(query, c, metric)
 		if err != nil {
 			return nil, fmt.Errorf("index: %w", err)
 		}
@@ -219,7 +220,7 @@ func (idx *IVFFlatIndex) Search(ctx context.Context, query []float32, k int, met
 	for p := 0; p < nProbes; p++ {
 		ci := cdist[p].idx
 		for _, vi := range idx.partitions[ci] {
-			d, err := Distance(query, idx.vectors[vi].Vector, metric)
+			d, err := distance.Distance(query, idx.vectors[vi].Vector, metric)
 			if err != nil {
 				return nil, fmt.Errorf("index: %w", err)
 			}
@@ -227,7 +228,7 @@ func (idx *IVFFlatIndex) Search(ctx context.Context, query []float32, k int, met
 		}
 	}
 
-	return TopK(results, k), nil
+	return distance.TopK(results, k), nil
 }
 
 // ivfFlatSnapshot is the JSON-serializable form of an IVFFlatIndex.
