@@ -132,8 +132,11 @@ func TestAsyncWriterAutoFlushByBatchSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read v2 failed: %v", err)
 	}
-	if m2.Fragments[0].NumRows != 1 {
-		t.Errorf("expected v2 fragment 1 row, got %d", m2.Fragments[0].NumRows)
+	if len(m2.Fragments) != 2 {
+		t.Fatalf("expected 2 fragments in v2, got %d", len(m2.Fragments))
+	}
+	if m2.Fragments[1].NumRows != 1 {
+		t.Errorf("expected v2 fragment 1 (newest) 1 row, got %d", m2.Fragments[1].NumRows)
 	}
 }
 

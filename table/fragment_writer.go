@@ -133,22 +133,22 @@ func (w *FragmentWriter) WriteColumn(ctx context.Context, columnID int32, data i
 
 	encoded, err := w.encoder.Encode(data, field.Type)
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: encode column %s (id=%d): %w", field.Name, columnID, err)
 	}
 
 	path := filepath.Join(w.basePath, fmt.Sprintf("col_%d.lance", columnID))
 	if err := w.store.Write(ctx, path, encoded); err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: write column %s (id=%d) to %q: %w", field.Name, columnID, path, err)
 	}
 
 	size, err := w.store.Size(ctx, path)
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: stat column %s (id=%d) at %q: %w", field.Name, columnID, path, err)
 	}
 
 	rowCount, err := inferNumRows(data, field)
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: infer rows for column %s (id=%d): %w", field.Name, columnID, err)
 	}
 
 	w.dataFiles = append(w.dataFiles, &DataFile{

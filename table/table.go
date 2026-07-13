@@ -104,21 +104,24 @@ func (t *Table) Name() string {
 	return t.name
 }
 
-// LatestManifest returns the latest manifest from the in-memory cache.
-// If not in cache, loads from disk.
+// LatestManifest returns the latest manifest.
+// It first checks the in-memory cache; if the cache does not contain
+// the latest version on disk, it loads from disk. This ensures data
+// written by AsyncWriter (which bypasses the cache) is visible.
 func (t *Table) LatestManifest(ctx context.Context) (*Manifest, error) {
-	t.mu.RLock()
-	m, ok := t.versionMgr.Latest()
-	t.mu.RUnlock()
-	if ok {
-		return m, nil
-	}
-
-	latest, err := t.manifestStore.LatestVersion(ctx)
+	latestVersion, err := t.manifestStore.LatestVersion(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("table: %w", err)
 	}
-	m, err = t.manifestStore.Read(ctx, latest)
+
+	t.mu.RLock()
+	cached, ok := t.versionMgr.Get(latestVersion)
+	t.mu.RUnlock()
+	if ok {
+		return cached, nil
+	}
+
+	m, err := t.manifestStore.Read(ctx, latestVersion)
 	if err != nil {
 		return nil, fmt.Errorf("table: %w", err)
 	}
@@ -304,6 +307,11 @@ func (t *Table) DropColumn(ctx context.Context, columnName string) error {
 	t.versionMgr.Publish(newManifest)
 
 	return nil
+}
+
+// ManifestStore returns the underlying manifest store for version management.
+func (t *Table) ManifestStore() *ManifestStore {
+	return t.manifestStore
 }
 
 // Close flushes any pending state (currently a no-op since we don't have async writer here).

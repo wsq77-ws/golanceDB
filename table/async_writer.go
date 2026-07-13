@@ -69,8 +69,8 @@ func NewAsyncWriter(store storage.ObjectStore, manifestStore *ManifestStore, sch
 }
 
 // Start launches the background goroutine. It reads the latest version
-// from the manifest store to initialize nextVersion; if no versions
-// exist, it starts at 1.
+// from the manifest store to initialize nextVersion and fragmentID;
+// if no versions exist, it starts at 1.
 func (w *AsyncWriter) Start(ctx context.Context) error {
 	versions, err := w.manifestStore.ListVersions(ctx)
 	if err != nil {
@@ -78,8 +78,15 @@ func (w *AsyncWriter) Start(ctx context.Context) error {
 	}
 	if len(versions) == 0 {
 		w.nextVersion = 1
+		w.fragmentID = 0
 	} else {
-		w.nextVersion = versions[len(versions)-1] + 1
+		latest := versions[len(versions)-1]
+		w.nextVersion = latest + 1
+		// Read the latest manifest to get the current MaxFragmentID.
+		manifest, rErr := w.manifestStore.Read(ctx, latest)
+		if rErr == nil {
+			w.fragmentID = manifest.MaxFragmentID + 1
+		}
 	}
 	w.started.Store(true)
 	go w.run(ctx)
@@ -225,28 +232,47 @@ func (w *AsyncWriter) accumulate(ctx context.Context, batch *RecordBatch) error 
 }
 
 // flush writes the current accumulated batch to disk as a new fragment
-// and commits a new manifest version.
+// and commits a new manifest version. It appends to existing fragments.
 func (w *AsyncWriter) flush(ctx context.Context) error {
 	if w.currentBatch == nil || w.currentRows == 0 {
 		return nil
 	}
 
-	fw := NewFragmentWriter(w.store, w.schema, w.fragmentID, w.tablePath, w.compression)
+	fragmentID := w.fragmentID
+	fw := NewFragmentWriter(w.store, w.schema, fragmentID, w.tablePath, w.compression)
 	if err := fw.WriteBatch(ctx, w.currentBatch); err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: async flush fragment %d: %w", fragmentID, err)
 	}
 	frag, err := fw.Finish()
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: async finish fragment %d: %w", fragmentID, err)
 	}
 
 	w.fragmentID++
 
+	// Read the latest manifest and append the new fragment.
 	manifest := NewManifest(w.nextVersion, w.schema)
-	manifest.Fragments = []*Fragment{frag}
-	manifest.MaxFragmentID = frag.ID
+	latest, err := w.manifestStore.LatestVersion(ctx)
+	if err != nil {
+		// No previous versions — this is the first fragment.
+		manifest.Fragments = []*Fragment{frag}
+		manifest.MaxFragmentID = frag.ID
+	} else {
+		latestM, err := w.manifestStore.Read(ctx, latest)
+		if err != nil {
+			return fmt.Errorf("table: async flush: read v%d manifest: %w", latest, err)
+		}
+		manifest.Fragments = make([]*Fragment, 0, len(latestM.Fragments)+1)
+		manifest.Fragments = append(manifest.Fragments, latestM.Fragments...)
+		manifest.Fragments = append(manifest.Fragments, frag)
+		if frag.ID > latestM.MaxFragmentID {
+			manifest.MaxFragmentID = frag.ID
+		} else {
+			manifest.MaxFragmentID = latestM.MaxFragmentID
+		}
+	}
 	if err := w.manifestStore.Write(ctx, manifest); err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: async flush: write v%d manifest: %w", manifest.Version, err)
 	}
 	w.nextVersion++
 

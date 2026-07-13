@@ -89,7 +89,7 @@ func setupTestEnv(t *testing.T) *testEnv {
 	manifest.Fragments = fragments
 	manifest.MaxFragmentID = int32(testNumFrags - 1)
 
-	reader := table.NewFragmentReader(store, schema)
+	reader := table.NewFragmentReader(store, schema, encode.CompressionNone)
 	bf := NewBruteForceSearch(reader, schema)
 	sf := NewScanFilter(reader, schema)
 	hybrid := NewHybridSearch(bf, sf)

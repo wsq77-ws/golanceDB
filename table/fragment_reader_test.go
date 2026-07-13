@@ -19,7 +19,7 @@ func newReaderTestEnv(t *testing.T) (*FragmentWriter, *FragmentReader, storage.O
 		{Name: "embedding", Type: encode.TypeFixedSizeList, Dimension: 8},
 	})
 	w := NewFragmentWriter(store, schema, 0, "tbl", encode.CompressionNone)
-	r := NewFragmentReader(store, schema)
+	r := NewFragmentReader(store, schema, encode.CompressionNone)
 	return w, r, store
 }
 

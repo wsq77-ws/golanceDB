@@ -15,12 +15,13 @@ type FragmentReader struct {
 	encoder encode.ColumnEncoder
 }
 
-// NewFragmentReader creates a FragmentReader with the default MiniBlock encoder.
-func NewFragmentReader(store storage.ObjectStore, schema *Schema) *FragmentReader {
+// NewFragmentReader creates a FragmentReader with the given compression type.
+// The compression must match what was used during writing.
+func NewFragmentReader(store storage.ObjectStore, schema *Schema, compression encode.CompressionType) *FragmentReader {
 	return &FragmentReader{
 		store:   store,
 		schema:  schema,
-		encoder: encode.NewMiniBlockEncoder(encode.CompressionNone),
+		encoder: encode.NewMiniBlockEncoder(compression),
 	}
 }
 
@@ -48,12 +49,12 @@ func (r *FragmentReader) ReadColumn(ctx context.Context, fragment *Fragment, col
 
 	data, err := r.store.Read(ctx, df.Path, 0, df.FileSize)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: read column %s (id=%d) from %q: %w", field.Name, columnID, df.Path, err)
 	}
 
 	decoded, err := r.encoder.Decode(data, field.Type, df.NumRows)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: decode column %s (id=%d) from %q: %w", field.Name, columnID, df.Path, err)
 	}
 	return decoded, nil
 }

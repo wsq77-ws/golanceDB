@@ -34,31 +34,34 @@ func (ms *ManifestStore) manifestPath(version int64) string {
 }
 
 // Write writes the manifest to its versioned path.
+// On storage failure, the error includes the file path for diagnostics.
 func (ms *ManifestStore) Write(ctx context.Context, manifest *Manifest) error {
 	data, err := manifest.Serialize()
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: serialize manifest v%d: %w", manifest.Version, err)
 	}
-	if err := ms.store.Write(ctx, ms.manifestPath(manifest.Version), data); err != nil {
-		return fmt.Errorf("table: %w", err)
+	path := ms.manifestPath(manifest.Version)
+	if err := ms.store.Write(ctx, path, data); err != nil {
+		return fmt.Errorf("table: write manifest v%d to %q: %w", manifest.Version, path, err)
 	}
 	return nil
 }
 
 // Read reads the manifest for the given version.
+// On storage failure, the error includes the file path for diagnostics.
 func (ms *ManifestStore) Read(ctx context.Context, version int64) (*Manifest, error) {
 	path := ms.manifestPath(version)
 	size, err := ms.store.Size(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: stat manifest v%d at %q: %w", version, path, err)
 	}
 	data, err := ms.store.Read(ctx, path, 0, size)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: read manifest v%d from %q: %w", version, path, err)
 	}
 	manifest, err := DeserializeManifest(data)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: deserialize manifest v%d: %w", version, err)
 	}
 	return manifest, nil
 }
@@ -67,7 +70,7 @@ func (ms *ManifestStore) Read(ctx context.Context, version int64) (*Manifest, er
 func (ms *ManifestStore) LatestVersion(ctx context.Context) (int64, error) {
 	versions, err := ms.ListVersions(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("table: %w", err)
+		return 0, fmt.Errorf("table: list versions in %q: %w", ms.basePath, err)
 	}
 	if len(versions) == 0 {
 		return 0, fmt.Errorf("table: no manifests found in %s", ms.basePath)
@@ -80,14 +83,14 @@ func (ms *ManifestStore) LatestVersion(ctx context.Context) (int64, error) {
 func (ms *ManifestStore) ListVersions(ctx context.Context) ([]int64, error) {
 	exists, err := ms.store.Exists(ctx, ms.basePath)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: check versions dir %q: %w", ms.basePath, err)
 	}
 	if !exists {
 		return nil, nil
 	}
 	paths, err := ms.store.List(ctx, ms.basePath)
 	if err != nil {
-		return nil, fmt.Errorf("table: %w", err)
+		return nil, fmt.Errorf("table: list versions in %q: %w", ms.basePath, err)
 	}
 	var versions []int64
 	for _, p := range paths {
@@ -108,8 +111,9 @@ func (ms *ManifestStore) ListVersions(ctx context.Context) ([]int64, error) {
 
 // DeleteVersion removes the manifest file for the given version.
 func (ms *ManifestStore) DeleteVersion(ctx context.Context, version int64) error {
-	if err := ms.store.Delete(ctx, ms.manifestPath(version)); err != nil {
-		return fmt.Errorf("table: %w", err)
+	path := ms.manifestPath(version)
+	if err := ms.store.Delete(ctx, path); err != nil {
+		return fmt.Errorf("table: delete manifest v%d at %q: %w", version, path, err)
 	}
 	return nil
 }
@@ -128,22 +132,22 @@ func (ms *ManifestStore) ReadLatest(ctx context.Context) (int64, error) {
 	path := ms.latestPath()
 	exists, err := ms.store.Exists(ctx, path)
 	if err != nil {
-		return 0, fmt.Errorf("table: %w", err)
+		return 0, fmt.Errorf("table: check _latest at %q: %w", path, err)
 	}
 	if !exists {
 		return 0, nil
 	}
 	size, err := ms.store.Size(ctx, path)
 	if err != nil {
-		return 0, fmt.Errorf("table: %w", err)
+		return 0, fmt.Errorf("table: stat _latest at %q: %w", path, err)
 	}
 	data, err := ms.store.Read(ctx, path, 0, size)
 	if err != nil {
-		return 0, fmt.Errorf("table: %w", err)
+		return 0, fmt.Errorf("table: read _latest from %q: %w", path, err)
 	}
 	version, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("table: %w", err)
+		return 0, fmt.Errorf("table: parse _latest content %q: %w", string(data), err)
 	}
 	return version, nil
 }
@@ -158,21 +162,22 @@ func (ms *ManifestStore) Commit(ctx context.Context, newManifest *Manifest, expe
 
 	current, err := ms.ReadLatest(ctx)
 	if err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: commit read latest: %w", err)
 	}
 	if current != expectedPrevVersion {
-		return ErrConflict
+		return fmt.Errorf("table: commit expected prev v%d, got v%d: %w", expectedPrevVersion, current, ErrConflict)
 	}
 	if err := ms.Write(ctx, newManifest); err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: commit write: %w", err)
 	}
 	content := []byte(strconv.FormatInt(newManifest.Version, 10))
 	tmpPath := ms.latestPath() + ".tmp"
 	if err := ms.store.Write(ctx, tmpPath, content); err != nil {
-		return fmt.Errorf("table: %w", err)
+		return fmt.Errorf("table: commit write tmp %q: %w", tmpPath, err)
 	}
-	if err := ms.store.Write(ctx, ms.latestPath(), content); err != nil {
-		return fmt.Errorf("table: %w", err)
+	latestPath := ms.latestPath()
+	if err := ms.store.Write(ctx, latestPath, content); err != nil {
+		return fmt.Errorf("table: commit write _latest %q: %w", latestPath, err)
 	}
 	return nil
 }
