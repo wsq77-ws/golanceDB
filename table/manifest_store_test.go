@@ -2,7 +2,9 @@ package table
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/glancedb/glancedb/encode"
@@ -191,5 +193,167 @@ func TestManifestStoreOverwrite(t *testing.T) {
 	}
 	if got.Tags["v"] != "2" {
 		t.Errorf("expected overwritten tag v=2, got %v", got.Tags)
+	}
+}
+
+func TestManifestStoreCommitSuccess(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	m := NewManifest(1, schema)
+	if err := ms.Commit(ctx, m, 0); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	latest, err := ms.ReadLatest(ctx)
+	if err != nil {
+		t.Fatalf("ReadLatest failed: %v", err)
+	}
+	if latest != 1 {
+		t.Errorf("expected latest 1, got %d", latest)
+	}
+}
+
+func TestManifestStoreCommitConflict(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	if err := ms.Commit(ctx, NewManifest(1, schema), 0); err != nil {
+		t.Fatalf("initial Commit failed: %v", err)
+	}
+
+	err := ms.Commit(ctx, NewManifest(2, schema), 0)
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+func TestManifestStoreReadLatestEmpty(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+
+	latest, err := ms.ReadLatest(ctx)
+	if err != nil {
+		t.Fatalf("ReadLatest failed: %v", err)
+	}
+	if latest != 0 {
+		t.Errorf("expected 0 for non-existent _latest, got %d", latest)
+	}
+}
+
+func TestManifestStoreReadLatestAfterCommit(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	if err := ms.Commit(ctx, NewManifest(5, schema), 0); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	latest, err := ms.ReadLatest(ctx)
+	if err != nil {
+		t.Fatalf("ReadLatest failed: %v", err)
+	}
+	if latest != 5 {
+		t.Errorf("expected latest 5, got %d", latest)
+	}
+}
+
+func TestManifestStoreCommitThenRead(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	m := NewManifest(1, schema)
+	m.Timestamp = 999
+	m.Tags["env"] = "prod"
+	if err := ms.Commit(ctx, m, 0); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+
+	got, err := ms.Read(ctx, 1)
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+	if got.Version != 1 {
+		t.Errorf("expected version 1, got %d", got.Version)
+	}
+	if got.Timestamp != 999 {
+		t.Errorf("expected timestamp 999, got %d", got.Timestamp)
+	}
+	if got.Tags["env"] != "prod" {
+		t.Errorf("expected tag env=prod, got %v", got.Tags)
+	}
+}
+
+func TestManifestStoreCommitConcurrent(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	const n = 10
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var successCount, conflictCount int
+
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			err := ms.Commit(ctx, NewManifest(int64(i+1), schema), 0)
+			mu.Lock()
+			defer mu.Unlock()
+			if err == nil {
+				successCount++
+			} else if errors.Is(err, ErrConflict) {
+				conflictCount++
+			} else {
+				t.Errorf("unexpected error: %v", err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if successCount != 1 {
+		t.Errorf("expected exactly 1 success, got %d", successCount)
+	}
+	if conflictCount != n-1 {
+		t.Errorf("expected %d conflicts, got %d", n-1, conflictCount)
+	}
+}
+
+func TestManifestStoreCommitSequence(t *testing.T) {
+	ctx := context.Background()
+	ms, _ := newTestManifestStore(t)
+	schema := NewSchema([]*Field{{Name: "id", Type: encode.TypeInt64}})
+
+	if err := ms.Commit(ctx, NewManifest(1, schema), 0); err != nil {
+		t.Fatalf("Commit V1 failed: %v", err)
+	}
+	if err := ms.Commit(ctx, NewManifest(2, schema), 1); err != nil {
+		t.Fatalf("Commit V2 failed: %v", err)
+	}
+	if err := ms.Commit(ctx, NewManifest(3, schema), 2); err != nil {
+		t.Fatalf("Commit V3 failed: %v", err)
+	}
+
+	latest, err := ms.ReadLatest(ctx)
+	if err != nil {
+		t.Fatalf("ReadLatest failed: %v", err)
+	}
+	if latest != 3 {
+		t.Errorf("expected latest 3, got %d", latest)
+	}
+
+	for _, v := range []int64{1, 2, 3} {
+		got, err := ms.Read(ctx, v)
+		if err != nil {
+			t.Fatalf("Read(%d) failed: %v", v, err)
+		}
+		if got.Version != v {
+			t.Errorf("Read(%d): expected version %d, got %d", v, v, got.Version)
+		}
 	}
 }

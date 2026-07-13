@@ -2,11 +2,13 @@ package table
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/glancedb/glancedb/storage"
 )
@@ -18,6 +20,7 @@ const manifestExt = ".manifest"
 type ManifestStore struct {
 	store    storage.ObjectStore
 	basePath string
+	mu       sync.Mutex
 }
 
 // NewManifestStore creates a ManifestStore rooted at basePath.
@@ -106,6 +109,69 @@ func (ms *ManifestStore) ListVersions(ctx context.Context) ([]int64, error) {
 // DeleteVersion removes the manifest file for the given version.
 func (ms *ManifestStore) DeleteVersion(ctx context.Context, version int64) error {
 	if err := ms.store.Delete(ctx, ms.manifestPath(version)); err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	return nil
+}
+
+// ErrConflict is returned when a CAS commit detects a version mismatch.
+var ErrConflict = errors.New("table: version conflict")
+
+// latestPath returns the path to the _latest pointer file.
+func (ms *ManifestStore) latestPath() string {
+	return filepath.Join(ms.basePath, "_latest")
+}
+
+// ReadLatest reads the _latest file and returns the current latest version.
+// Returns 0 if the _latest file doesn't exist (table not yet created).
+func (ms *ManifestStore) ReadLatest(ctx context.Context) (int64, error) {
+	path := ms.latestPath()
+	exists, err := ms.store.Exists(ctx, path)
+	if err != nil {
+		return 0, fmt.Errorf("table: %w", err)
+	}
+	if !exists {
+		return 0, nil
+	}
+	size, err := ms.store.Size(ctx, path)
+	if err != nil {
+		return 0, fmt.Errorf("table: %w", err)
+	}
+	data, err := ms.store.Read(ctx, path, 0, size)
+	if err != nil {
+		return 0, fmt.Errorf("table: %w", err)
+	}
+	version, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("table: %w", err)
+	}
+	return version, nil
+}
+
+// Commit atomically writes a new manifest version using optimistic locking.
+// It verifies that the current latest version on disk matches expectedPrevVersion
+// before writing. If the check fails, returns ErrConflict.
+// The caller should retry the operation (re-read latest, rebuild manifest, re-commit).
+func (ms *ManifestStore) Commit(ctx context.Context, newManifest *Manifest, expectedPrevVersion int64) error {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	current, err := ms.ReadLatest(ctx)
+	if err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	if current != expectedPrevVersion {
+		return ErrConflict
+	}
+	if err := ms.Write(ctx, newManifest); err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	content := []byte(strconv.FormatInt(newManifest.Version, 10))
+	tmpPath := ms.latestPath() + ".tmp"
+	if err := ms.store.Write(ctx, tmpPath, content); err != nil {
+		return fmt.Errorf("table: %w", err)
+	}
+	if err := ms.store.Write(ctx, ms.latestPath(), content); err != nil {
 		return fmt.Errorf("table: %w", err)
 	}
 	return nil
