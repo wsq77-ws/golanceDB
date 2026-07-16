@@ -183,6 +183,8 @@ See the full example at [examples/quickstart/main.go](examples/quickstart/main.g
 - [x] Structured logging (`log/slog` with operation timing)
 - [x] End-to-end test coverage: insert, search, hybrid filter, async write, schema evolution, storage failure
 - [x] Schema evolution (AddColumn / DropColumn)
+- [x] Configuration system: `config` package with multi-backend `Store` factory
+- [x] Config-based connection: `ConnectWithConfig(ctx, cfg)`
 
 ### 🗓️ Phase 5 — Performance Benchmarks (Pending)
 
@@ -220,7 +222,9 @@ See the full example at [examples/quickstart/main.go](examples/quickstart/main.g
 
 ```
 glancedb/
-├── api/            # Public-facing API (Database, Table, QueryBuilder, Errors, Logger)
+├── config/          # Configuration system
+│   └── config.go            # Config struct, JSON Load/Save, Store factory, Validate
+├── api/             # Public-facing API (Database, Table, QueryBuilder, Errors, Logger)
 │   ├── connection.go       # Database management (Connect / Close / CreateTable / OpenTable)
 │   ├── table.go            # Table wrapper (Insert / InsertAsync / Search / Flush)
 │   ├── query.go            # Query builder (NewQuery → Vector → Filter → Build)

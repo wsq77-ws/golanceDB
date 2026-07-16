@@ -183,6 +183,8 @@ func main() {
 - [x] 结构化日志（基于 `log/slog`，操作耗时追踪）
 - [x] 端到端测试覆盖：插入、搜索、混合过滤、异步写入、Schema 演进、存储故障
 - [x] Schema 演进（AddColumn / DropColumn）
+- [x] 配置系统：`config` 包，支持多种存储后端创建
+- [x] 配置化连接：`ConnectWithConfig(ctx, cfg)`
 
 ### 🗓️ 阶段五 — 性能基准测试（待完成）
 
@@ -220,7 +222,9 @@ func main() {
 
 ```
 glancedb/
-├── api/            # 对外 API（Database, Table, QueryBuilder, Errors, Logger）
+├── config/          # 配置系统
+│   └── config.go            # 配置结构体，JSON 加载/保存，Store 工厂，校验
+├── api/             # 对外暴露的 API（Database, Table, QueryBuilder, Errors, Logger）
 │   ├── connection.go       # Database 管理（Connect / Close / CreateTable / OpenTable）
 │   ├── table.go            # Table 封装（Insert / InsertAsync / Search / Flush）
 │   ├── query.go            # 查询构建器（NewQuery → Vector → Filter → Build）

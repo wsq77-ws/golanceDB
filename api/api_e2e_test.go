@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glancedb/glancedb/config"
 	"github.com/glancedb/glancedb/encode"
 	"github.com/glancedb/glancedb/query"
 	"github.com/glancedb/glancedb/table"
@@ -644,5 +645,92 @@ func TestE2E_BatchInsert(t *testing.T) {
 	}
 	if len(results) == 0 {
 		t.Fatal("expected at least 1 result from BatchInsert data")
+	}
+}
+
+func TestE2E_ConnectWithConfig(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	// Create a config file.
+	cfgPath := filepath.Join(dir, "glancedb.json")
+	cfg := config.DefaultConfig()
+	cfg.Path = dir
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatalf("Save config failed: %v", err)
+	}
+
+	// Load config and connect.
+	loaded, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load config failed: %v", err)
+	}
+
+	ctx := context.Background()
+	db, err := ConnectWithConfig(ctx, loaded)
+	if err != nil {
+		t.Fatalf("ConnectWithConfig failed: %v", err)
+	}
+	defer db.Close()
+
+	// Create a table and insert data.
+	schema := newTestSchema()
+	tbl, err := db.CreateTable(ctx, "test_cfg", schema)
+	if err != nil {
+		t.Fatalf("CreateTable failed: %v", err)
+	}
+
+	batch := makeBatch(schema, 1, "config-test", 5)
+	if err := tbl.Insert(ctx, batch); err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+
+	rows, err := tbl.NumRows(ctx)
+	if err != nil {
+		t.Fatalf("NumRows failed: %v", err)
+	}
+	if rows != 5 {
+		t.Errorf("expected 5 rows, got %d", rows)
+	}
+
+	// Search back.
+	results, err := tbl.Search(ctx, NewQuery(
+		Vector([]float32{1, 0, 0, 0}).Column("embedding")).TopK(3).Build(),
+	)
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected search results")
+	}
+
+	t.Logf("Config-based Connect: %d rows, %d search results", rows, len(results))
+}
+
+func TestE2E_ConfigValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		modify  func(*config.Config)
+		wantErr bool
+	}{
+		{"valid local", func(c *config.Config) {}, false},
+		{"missing path", func(c *config.Config) { c.Path = "" }, true},
+		{"unknown backend", func(c *config.Config) { c.Storage.Backend = "gcs" }, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.DefaultConfig()
+			cfg.Path = t.TempDir()
+			tt.modify(cfg)
+
+			ctx := context.Background()
+			_, err := ConnectWithConfig(ctx, cfg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ConnectWithConfig error = %v, wantErr = %v", err, tt.wantErr)
+			}
+		})
 	}
 }

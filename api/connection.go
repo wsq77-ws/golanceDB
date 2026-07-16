@@ -8,13 +8,15 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/glancedb/glancedb/config"
 	"github.com/glancedb/glancedb/storage"
 )
 
 // Database is the top-level handle for a GlanceDB instance.
-// It manages table lifecycle and storage connectivity. Use Connect to create one.
+// It manages table lifecycle and storage connectivity. Use Connect or
+// ConnectWithConfig to create one.
 type Database struct {
-	path   string
+	path   string // logical database path
 	store  storage.Store
 	tables map[string]*tableRef
 	mu     sync.RWMutex
@@ -26,8 +28,9 @@ type tableRef struct {
 	*Table
 }
 
-// Connect opens or creates a GlanceDB database at the given directory path.
-// The directory is created if it does not exist. Uses the local filesystem.
+// Connect opens or creates a GlanceDB database at the given directory path,
+// using the local filesystem. This is a convenience wrapper around
+// ConnectWithConfig with default local settings.
 func Connect(path string) (*Database, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -75,6 +78,55 @@ func Connect(path string) (*Database, error) {
 	}
 
 	db.logger.InfoContext(context.Background(), "database connected", "path", abs)
+	return db, nil
+}
+
+// ConnectWithConfig opens or creates a GlanceDB database using the given
+// configuration. The storage backend is determined by cfg.Storage.Backend.
+func ConnectWithConfig(ctx context.Context, cfg *config.Config) (*Database, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, e(ErrInvalidArg, "database.ConnectWithConfig",
+			"invalid configuration", err)
+	}
+
+	store, err := cfg.NewStore()
+	if err != nil {
+		return nil, e(ErrInvalidArg, "database.ConnectWithConfig",
+			"cannot create storage backend", err)
+	}
+
+	db := &Database{
+		path:   cfg.Path,
+		store:  store,
+		tables: make(map[string]*tableRef),
+		logger: &Logger{L().With("db_path", cfg.Path, "backend", string(cfg.Storage.Backend))},
+	}
+
+	// Scan for existing tables by listing directories that contain _versions.
+	// Uses the Store interface so it works with any backend.
+	exists, err := store.Exists(ctx, cfg.Path)
+	if err != nil {
+		db.logger.WarnContext(ctx, "cannot check database path via store", "error", err)
+	} else if exists {
+		entries, listErr := store.List(ctx, cfg.Path)
+		if listErr != nil {
+			db.logger.WarnContext(ctx, "cannot list database directory via store", "error", listErr)
+		} else {
+			for _, entry := range entries {
+				verPath := filepath.Join(cfg.Path, entry, "_versions")
+				verExists, verErr := store.Exists(ctx, verPath)
+				if verErr == nil && verExists {
+					db.tables[entry] = &tableRef{}
+					db.logger.DebugContext(ctx, "found existing table", "table", entry)
+				}
+			}
+		}
+	}
+
+	db.logger.InfoContext(ctx, "database connected",
+		"path", cfg.Path,
+		"backend", string(cfg.Storage.Backend),
+		"tables_found", len(db.tables))
 	return db, nil
 }
 
@@ -172,10 +224,14 @@ func (db *Database) DropTable(ctx context.Context, name string) error {
 		}
 	}
 
+	// Remove the table directory via the Store interface.
 	tableDir := filepath.Join(db.path, name)
-	if err := os.RemoveAll(tableDir); err != nil {
-		return e(ErrStorage, "database.DropTable",
-			fmt.Sprintf("cannot remove table directory %q", tableDir), err)
+	if err := db.store.Delete(ctx, tableDir); err != nil {
+		// For local FS, attempt recursive removal.
+		if err2 := os.RemoveAll(tableDir); err2 != nil {
+			return e(ErrStorage, "database.DropTable",
+				fmt.Sprintf("cannot remove table directory %q", tableDir), err)
+		}
 	}
 	delete(db.tables, name)
 	db.logger.InfoContext(ctx, "table dropped", "table", name)
@@ -200,3 +256,6 @@ func (db *Database) ListTables(ctx context.Context) ([]string, error) {
 
 // Path returns the database directory path.
 func (db *Database) Path() string { return db.path }
+
+// Store returns the underlying storage backend.
+func (db *Database) Store() storage.Store { return db.store }
