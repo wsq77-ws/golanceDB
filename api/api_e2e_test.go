@@ -598,3 +598,51 @@ func TestE2E_AsyncWriterSearch(t *testing.T) {
 		t.Fatal("expected at least 1 result from async-written data")
 	}
 }
+
+// TestE2E_BatchInsert verifies that BatchInsert correctly merges multiple
+// RecordBatches into a single fragment.
+func TestE2E_BatchInsert(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	db, err := Connect(dir)
+	if err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer db.Close()
+
+	schema := newTestSchema()
+	tbl, err := db.CreateTable(ctx, "vectors", schema)
+	if err != nil {
+		t.Fatalf("CreateTable failed: %v", err)
+	}
+
+	// Insert 3 batches via BatchInsert with startID=1 to avoid zero-norm vectors.
+	batches := []*table.RecordBatch{
+		makeBatch(schema, 1, "batch", 3),
+		makeBatch(schema, 4, "batch", 3),
+		makeBatch(schema, 7, "batch", 3),
+	}
+	if err := tbl.BatchInsert(ctx, batches); err != nil {
+		t.Fatalf("BatchInsert failed: %v", err)
+	}
+
+	// Should be a single fragment with 9 rows.
+	n, err := tbl.NumRows(ctx)
+	if err != nil {
+		t.Fatalf("NumRows failed: %v", err)
+	}
+	if n != 9 {
+		t.Fatalf("expected 9 rows after BatchInsert, got %d", n)
+	}
+
+	// Search should find the vector [4,0,0,0] (row 4).
+	q := NewQuery(Vector([]float32{4, 0, 0, 0}).Column("embedding")).TopK(3).Build()
+	results, err := tbl.Search(ctx, q)
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected at least 1 result from BatchInsert data")
+	}
+}

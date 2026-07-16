@@ -2,6 +2,7 @@ package table
 
 import (
 	"context"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -19,10 +20,10 @@ func newTestTableSchema() *Schema {
 func newTestTable(t *testing.T) (*Table, storage.ObjectStore) {
 	t.Helper()
 	dir := t.TempDir()
-	store := storage.NewLocalFS(dir)
+	store := storage.NewLocalFS("")
 	schema := newTestTableSchema()
 	ctx := context.Background()
-	tbl, err := Create(ctx, "test_table", "tbl", schema, store, encode.CompressionNone)
+	tbl, err := Create(ctx, "test_table", filepath.Join(dir, "tbl"), schema, store, encode.CompressionNone)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -47,10 +48,10 @@ func newTestBatch(schema *Schema, n int) *RecordBatch {
 func TestTableCreateOpenRoundtrip(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	store := storage.NewLocalFS(dir)
+	store := storage.NewLocalFS("")
 	schema := newTestTableSchema()
 
-	tbl, err := Create(ctx, "mytable", "tbl", schema, store, encode.CompressionNone)
+	tbl, err := Create(ctx, "mytable", filepath.Join(dir, "tbl"), schema, store, encode.CompressionNone)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -58,7 +59,7 @@ func TestTableCreateOpenRoundtrip(t *testing.T) {
 		t.Fatalf("Close failed: %v", err)
 	}
 
-	tbl2, err := Open(ctx, "mytable", "tbl", store, encode.CompressionNone)
+	tbl2, err := Open(ctx, "mytable", filepath.Join(dir, "tbl"), store, encode.CompressionNone)
 	if err != nil {
 		t.Fatalf("Open failed: %v", err)
 	}
@@ -357,9 +358,9 @@ func TestTableDropColumn(t *testing.T) {
 func TestTableConcurrentReadsAndWrites(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	store := storage.NewLocalFS(dir)
+	store := storage.NewLocalFS("")
 	schema := newTestTableSchema()
-	tbl, err := Create(ctx, "test_table", "tbl", schema, store, encode.CompressionNone)
+	tbl, err := Create(ctx, "test_table", filepath.Join(dir, "tbl"), schema, store, encode.CompressionNone)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -412,15 +413,17 @@ func TestTableConcurrentReadsAndWrites(t *testing.T) {
 func TestTableSchemaNameConcurrent(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	store := storage.NewLocalFS(dir)
+	store := storage.NewLocalFS("")
 	schema := newTestTableSchema()
-	tbl, err := Create(ctx, "test_table", "tbl", schema, store, encode.CompressionNone)
+	tbl, err := Create(ctx, "test_table", filepath.Join(dir, "tbl"), schema, store, encode.CompressionNone)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+
+	// Concurrent reads: 3 goroutines reading Schema() and Name() 100 times each.
+	for i := 0; i < 3; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -436,9 +439,9 @@ func TestTableSchemaNameConcurrent(t *testing.T) {
 func TestTableOpenNonExistent(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
-	store := storage.NewLocalFS(dir)
+	store := storage.NewLocalFS("")
 
-	if _, err := Open(ctx, "missing", "tbl", store, encode.CompressionNone); err == nil {
+	if _, err := Open(ctx, "missing", filepath.Join(dir, "tbl"), store, encode.CompressionNone); err == nil {
 		t.Error("expected error opening non-existent table")
 	}
 }

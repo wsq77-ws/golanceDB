@@ -115,7 +115,7 @@ func (t *Table) Insert(ctx context.Context, batch *table.RecordBatch) error {
 	t.mu.RUnlock()
 
 	return t.logger.LogOperation(ctx, "table.Insert", func(ctx context.Context) error {
-		frag, err := t.table.Insert(ctx, batch)
+		frag, err := t.table.BatchInsert(ctx, []*table.RecordBatch{batch})
 		if err != nil {
 			return wrapStorageErr(err, "table.Insert", t.name)
 		}
@@ -123,6 +123,36 @@ func (t *Table) Insert(ctx context.Context, batch *table.RecordBatch) error {
 			"fragment_id", frag.ID,
 			"num_rows", batch.NumRows,
 			"columns", len(batch.Columns),
+		)
+		return nil
+	})
+}
+
+// BatchInsert writes multiple RecordBatches as a single fragment.
+// All batches are merged into one fragment and committed with a single manifest
+// version, drastically reducing write amplification for bulk operations.
+func (t *Table) BatchInsert(ctx context.Context, batches []*table.RecordBatch) error {
+	t.mu.RLock()
+	if t.closed {
+		t.mu.RUnlock()
+		return ErrTableClosed
+	}
+	t.mu.RUnlock()
+
+	var totalRows int64
+	for _, b := range batches {
+		totalRows += b.NumRows
+	}
+
+	return t.logger.LogOperation(ctx, "table.BatchInsert", func(ctx context.Context) error {
+		frag, err := t.table.BatchInsert(ctx, batches)
+		if err != nil {
+			return wrapStorageErr(err, "table.BatchInsert", t.name)
+		}
+		t.logger.DebugContext(ctx, "batch insert completed",
+			"fragment_id", frag.ID,
+			"num_rows", totalRows,
+			"num_batches", len(batches),
 		)
 		return nil
 	})

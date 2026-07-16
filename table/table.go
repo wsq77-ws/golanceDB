@@ -34,7 +34,7 @@ func NewTable(name string, tablePath string, schema *Schema, store storage.Objec
 		tablePath:      tablePath,
 		schema:         schema,
 		store:          store,
-		manifestStore:  NewManifestStore(store, filepath.Join(tablePath, "_versions")),
+		manifestStore:  NewLocalManifestStore(filepath.Join(tablePath, "_versions")),
 		versionMgr:     NewVersionManager(10),
 		compression:    compression,
 		nextVersion:    1,
@@ -65,7 +65,7 @@ func Open(ctx context.Context, name string, tablePath string, store storage.Obje
 		name:           name,
 		tablePath:      tablePath,
 		store:          store,
-		manifestStore:  NewManifestStore(store, filepath.Join(tablePath, "_versions")),
+		manifestStore:  NewLocalManifestStore(filepath.Join(tablePath, "_versions")),
 		versionMgr:     NewVersionManager(10),
 		compression:    compression,
 		nextVersion:    1,
@@ -174,8 +174,29 @@ func (t *Table) ListVersions(ctx context.Context) ([]int64, error) {
 
 // Insert writes a RecordBatch as a new fragment and commits a new manifest version.
 func (t *Table) Insert(ctx context.Context, batch *RecordBatch) (*Fragment, error) {
+	return t.BatchInsert(ctx, []*RecordBatch{batch})
+}
+
+// BatchInsert writes multiple RecordBatches as a single fragment, greatly
+// reducing write amplification compared to calling Insert in a loop.
+// All batches are merged into one fragment and committed with a single manifest version.
+func (t *Table) BatchInsert(ctx context.Context, batches []*RecordBatch) (*Fragment, error) {
+	if len(batches) == 0 {
+		return nil, fmt.Errorf("table: no batches to insert")
+	}
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	// Merge all batches into one if there are multiple.
+	batch := batches[0]
+	if len(batches) > 1 {
+		merged, err := mergeRecordBatches(batches)
+		if err != nil {
+			return nil, fmt.Errorf("table: %w", err)
+		}
+		batch = merged
+	}
 
 	fragmentID := t.nextFragmentID
 	writer := NewFragmentWriter(t.store, t.schema, fragmentID, t.tablePath, t.compression)

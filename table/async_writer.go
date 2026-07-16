@@ -292,18 +292,31 @@ func (w *AsyncWriter) sendResult(frag *Fragment, manifest *Manifest, err error) 
 }
 
 // mergeColumn appends incoming data to existing data via type-switching.
+// mergeColumn handles all types supported by inferNumRows.
 func mergeColumn(existing, incoming interface{}) (interface{}, error) {
 	switch a := existing.(type) {
-	case []int64:
-		b, ok := incoming.([]int64)
+	case []int8:
+		b, ok := incoming.([]int8)
 		if !ok {
-			return nil, fmt.Errorf("cannot merge %T into []int64", incoming)
+			return nil, fmt.Errorf("cannot merge %T into []int8", incoming)
+		}
+		return append(a, b...), nil
+	case []int16:
+		b, ok := incoming.([]int16)
+		if !ok {
+			return nil, fmt.Errorf("cannot merge %T into []int16", incoming)
 		}
 		return append(a, b...), nil
 	case []int32:
 		b, ok := incoming.([]int32)
 		if !ok {
 			return nil, fmt.Errorf("cannot merge %T into []int32", incoming)
+		}
+		return append(a, b...), nil
+	case []int64:
+		b, ok := incoming.([]int64)
+		if !ok {
+			return nil, fmt.Errorf("cannot merge %T into []int64", incoming)
 		}
 		return append(a, b...), nil
 	case []float32:
@@ -333,4 +346,42 @@ func mergeColumn(existing, incoming interface{}) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("unsupported column type %T for merge", existing)
 	}
+}
+
+// mergeRecordBatches merges multiple RecordBatches into one by concatenating
+// column data. All batches must have compatible schemas (same column IDs).
+func mergeRecordBatches(batches []*RecordBatch) (*RecordBatch, error) {
+	if len(batches) == 0 {
+		return nil, fmt.Errorf("no batches to merge")
+	}
+	if len(batches) == 1 {
+		return batches[0], nil
+	}
+
+	schema := batches[0].Schema
+	var totalRows int64
+	for _, b := range batches {
+		if b.Schema != schema {
+			return nil, fmt.Errorf("schema mismatch in batch insert")
+		}
+		totalRows += b.NumRows
+	}
+
+	merged := NewRecordBatch(schema, totalRows)
+	for colID := range batches[0].Columns {
+		result := batches[0].Columns[colID]
+		for i := 1; i < len(batches); i++ {
+			data, ok := batches[i].Columns[colID]
+			if !ok {
+				continue
+			}
+			var err error
+			result, err = mergeColumn(result, data)
+			if err != nil {
+				return nil, fmt.Errorf("merge column %d: %w", colID, err)
+			}
+		}
+		merged.SetColumn(colID, result)
+	}
+	return merged, nil
 }
