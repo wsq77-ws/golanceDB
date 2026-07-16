@@ -8,7 +8,7 @@ GlanceDB 是一个纯 Go 实现的嵌入式向量数据库引擎，兼容 Lance 
 - 纯 Go 实现，不依赖 CGO / Rust 调用
 - 零外部运行时依赖（除 OS 标准库外）
 - 嵌入式部署，无独立服务进程
-- 与 Lance 格式兼容（Protobuf 元数据、Mini-Block 编码）
+- 与 Lance 格式兼容（Mini-Block 编码、列式存储布局）
 
 **关键文档**（`/design/` 目录由 `.gitignore` 排除，AI 仍可直接读取）：
 - [design.md](design/design.md) — 完整架构设计、数据结构、接口定义
@@ -20,10 +20,13 @@ GlanceDB 是一个纯 Go 实现的嵌入式向量数据库引擎，兼容 Lance 
 
 | 依赖 | 用途 | 何时需要 |
 |---|---|---|
-| `google.golang.org/protobuf` | Manifest / Fragment 序列化 | 所有涉及元数据读写的代码 |
-| `github.com/RoaringBitmap/roaring` | 删除标记位图 | Delete / Compact 功能 |
-| `github.com/klauspost/compress/zstd` | Zstd 压缩 | 数据写入时压缩 |
-| `github.com/klauspost/compress/lz4` | LZ4 压缩（可选） | 需要 LZ4 压缩的场景 |
+| `github.com/klauspost/compress/zstd` | Zstd 压缩（列数据写入） | 数据写入时压缩 |
+| `github.com/pierrec/lz4/v4` | LZ4 压缩（可选） | 需要 LZ4 压缩的场景 |
+
+**说明**：
+- Manifest 元数据使用标准库 `encoding/json`，无需 protobuf 依赖
+- 删除标记功能开发前无需引入 `RoaringBitmap`
+- ManifestStore 通过 `storage.Store` 接口操作，支持本地文件系统和未来 S3/FUSE
 
 **禁止引入**：
 - 禁止 CGO 调用外部库（如 Lance Rust 核心）
@@ -36,48 +39,50 @@ GlanceDB 是一个纯 Go 实现的嵌入式向量数据库引擎，兼容 Lance 
 
 ```
 glancedb/
-├── api/          # 对外暴露的 API（Connection, Table, Query）
-│   ├── connection.go
-│   ├── table.go
-│   ├── query.go
-│   └── errors.go
+├── config/       # 配置系统
+│   └── config.go           # Config 结构体、JSON Load/Save、Store 工厂、Validate
+├── api/          # 对外暴露的 API（Database, Table, Query, Errors, Logger）
+│   ├── connection.go       # Database 管理（Connect / ConnectWithConfig / Close）
+│   ├── table.go            # Table 封装（Insert / BatchInsert / InsertAsync / Search / Flush）
+│   ├── query.go            # 查询构建器（Vector → Filter → Build）
+│   ├── errors.go           # 统一错误类型（ErrorCode + UserMessage）
+│   └── logger.go           # 结构化日志（slog 封装）
 ├── table/        # 表 / Dataset 层
-│   ├── manifest.go        # Manifest 结构 + 序列化
-│   ├── manifest_store.go  # Manifest 读写 + 版本管理
-│   ├── fragment.go        # Fragment 结构
-│   ├── fragment_writer.go # Fragment 写入
-│   ├── fragment_reader.go # Fragment 读取
-│   ├── schema.go          # Schema / Field 定义
-│   ├── version_manager.go # MVCC 版本管理
-│   └── async_writer.go    # 异步写入器
+│   ├── manifest.go         # Manifest 结构 + JSON 序列化
+│   ├── manifest_store.go   # Manifest 读写 + 版本管理（基于 Store 接口）
+│   ├── fragment.go         # Fragment / DataFile / DeletionFile 结构
+│   ├── fragment_writer.go  # Fragment 写入 + RecordBatch
+│   ├── fragment_reader.go  # Fragment 读取（列解码）
+│   ├── schema.go           # Schema / Field 定义
+│   ├── version_manager.go  # MVCC 版本管理（LRU 缓存）
+│   └── async_writer.go     # 异步批量写入（goroutine + channel）
 ├── encode/       # 列式编码
-│   ├── interface.go       # ColumnEncoder 接口
-│   ├── miniblock.go       # Mini-Block 编码/解码
-│   ├── constant.go        # Constant 布局
-│   └── compression.go     # 压缩/解压（Zstd, LZ4）
+│   ├── interface.go        # ColumnEncoder 接口
+│   ├── miniblock.go        # Mini-Block 编码/解码
+│   ├── constant.go         # Constant 布局
+│   └── compression.go      # 压缩/解压（Zstd, LZ4）
 ├── storage/      # 存储引擎
-│   ├── object_store.go    # ObjectStore 接口
-│   ├── local_fs.go        # 本地文件系统实现
-│   ├── buffer_pool.go     # Buffer Pool（LRU 缓存）
-│   └── file_footer.go     # File Footer 读写
+│   ├── object_store.go     # Store 统一接口 + ObjectStore 类型别名
+│   ├── local_fs.go         # 本地文件系统实现
+│   ├── buffer_pool.go      # Buffer Pool（LRU 缓存）
+│   └── file_footer.go      # File Footer 读写（40 字节）
 ├── distance/     # 公共距离计算
-│   ├── types.go           # DistanceMetric, SearchResult
-│   ├── distance.go        # Distance, Distances, TopK 函数
-│   └── distance_test.go
+│   ├── types.go            # DistanceMetric, SearchResult
+│   ├── distance.go         # Distance, Distances, TopK 函数
+│   └── distance_test.go    # 13 个测试用例
 ├── query/        # 查询引擎
-│   ├── brute_force.go     # 暴力向量搜索
-│   ├── scan_filter.go     # 标量过滤（谓词下推）
-│   ├── hybrid_search.go   # 混合搜索
-│   └── reranker.go        # 结果重排序
+│   ├── types.go            # Query / VectorQuery / ScalarFilter 定义
+│   ├── brute_force.go      # 暴力向量搜索
+│   ├── scan_filter.go      # 标量过滤（谓词下推）
+│   ├── hybrid_search.go    # 混合搜索（双策略）
+│   └── reranker.go         # 结果重排序
 ├── index/        # 索引系统
-│   ├── interface.go       # Index 接口定义
-│   ├── ivf_flat.go        # IVF + Flat 索引
-│   └── flat.go            # 暴力基线索引
-├── proto/        # Protobuf 定义
-│   ├── manifest.proto
-│   └── table.proto
-├── benchmark/    # 性能基准测试
+│   ├── interface.go        # Index 接口定义
+│   ├── types.go            # 类型定义（VectorRecord / IndexType / IndexStats）
+│   ├── ivf_flat.go         # IVF + Flat ANN 索引（K-Means 聚类）
+│   └── flat.go             # 暴力基线索引
 └── examples/     # 使用示例
+    └── quickstart/         # 完整使用示例
 ```
 
 ---
@@ -87,23 +92,25 @@ glancedb/
 ### 1. 单元测试
 
 - 每个包必须有对应的 `_test.go` 文件，测试覆盖核心路径和边界条件。
-- 新功能提交前必须执行：`go test ./...`
+- 新功能提交前必须执行：`go test -race ./...`（要求竞态检测通过）
 - 使用 Go 原生 `testing` 包，不需要第三方测试框架。
-- Benchmark 写在 `benchmark/` 目录下，使用 `go test -bench=. -benchmem`。
+- Benchmark 写在 `benchmark/` 目录下（阶段五），使用 `go test -bench=. -benchmem`。
 
 **测试要求**：
 - **正常路径**：验证功能正确性（如 Insert 后能 Search 到）
 - **边界条件**：空输入、nil 指针、零长度向量、单行/超多行数据
-- **错误路径**：文件不存在、权限不足、版本冲突、Schema 不匹配
+- **错误路径**：文件不存在、权限不足、版本冲突、Schema 不匹配、存储故障恢复
 - **并发安全**：使用 `go test -race` 验证无数据竞争
 - **跨平台**：涉及文件路径操作时，使用 `filepath.Join` 而非字符串拼接
+- **存储抽象**：所有测试通过 `storage.Store` 接口操作，不依赖具体后端
 
 ### 2. 错误处理
 
 - 所有可能失败的函数必须返回 `error`，禁止 panic（除初始化阶段的 fatal 错误外）。
 - 使用 `fmt.Errorf("package: %w", err)` 包装错误，保留错误链。
-- 在 `api/errors.go` 中定义公共错误码，使用 `errors.Is()` / `errors.As()` 判断。
-- 错误信息应包含足够的上下文（如文件名、版本号、列 ID）。
+- 在 `api/errors.go` 中定义公共错误码，提供 `UserMessage()` 返回用户友好提示。
+- 使用 `wrapStorageErr()` 将所有底层错误统一为 `api.Error`，确保存储故障时既有结构化日志又有用户友好信息。
+- 错误信息应包含足够的上下文（如文件名、版本号、列 ID、操作名）。
 
 ### 3. 代码风格
 
@@ -115,7 +122,7 @@ glancedb/
   - 导出类型/函数使用驼峰（`CreateTable`, `NewFragmentWriter`）
   - 私有字段使用驼峰（`fieldID`, `numRows`）
 - 禁止使用 `init()` 函数（除非绝对必要）
-- 禁止使用 `context.Background()` 在生产路径中
+- 禁止使用 `context.Background()` 在生产路径中（仅可在外层入口如 `Connect` 中用于日志兜底）
 
 ### 4. 注释规范
 
@@ -128,10 +135,11 @@ glancedb/
 ### 5. 跨平台
 
 - 所有文件路径操作使用 `path/filepath` 包，禁止硬编码 `/` 或 `\`。
-- 禁止使用 `syscall` / `golang.org/x/sys` 的非可移植接口（Phase 1 阶段）。
+- 禁止使用 `syscall` / `golang.org/x/sys` 的非可移植接口。
 - 行尾使用 LF（Go 工具链默认处理）。
 - 涉及 mmap 等平台特定功能时，使用 `_linux.go`, `_windows.go` 构建标签。
 - CI 至少在 Linux amd64 + Windows amd64 上运行测试。
+- 测试用的临时文件应使用 `t.TempDir()` 自动清理，禁止手动创建测试目录。
 
 ---
 
@@ -141,7 +149,8 @@ GlanceDB 的设计目标之一是从 MVP 平滑演进到生产级系统。以下
 
 ### 6.1 接口先行
 
-- 存储后端通过 `ObjectStore` 接口抽象。写 `LocalFS` 实现时，确保接口设计能支持 S3 / GCS。
+- 存储后端通过 `storage.Store` 统一接口抽象。`LocalFS` 实现时可确保接口设计能支持 S3 / FUSE / GCS。
+- 配置系统通过 `config.Config.NewStore()` 工厂方法选择后端，新增后端只需添加 `BackendType` + 分支。
 - 编码器通过 `ColumnEncoder` 接口抽象。未来新增编码格式只需实现该接口。
 - 索引通过 `Index` 接口抽象。IVFFlat 和未来的 HNSW 都实现同一接口。
 
@@ -154,11 +163,14 @@ GlanceDB 的设计目标之一是从 MVP 平滑演进到生产级系统。以下
 ### 6.3 包依赖方向
 
 ```
+config (纯数据，不依赖项目内其他包)
+       ↓
 api → table ↔ encode ↔ storage
        ↓          ↓
      query ←─── index
 ```
 
+- `config` 包是纯数据定义，不导入任何项目内部包（仅导入 `storage` 用于工厂函数）。
 - `table` 包可以依赖 `encode` 和 `storage`。
 - `query` 包可以依赖 `table` 和 `index`。
 - `api` 包依赖所有下层包。
@@ -166,9 +178,10 @@ api → table ↔ encode ↔ storage
 
 ### 6.4 版本兼容
 
-- Manifest 的 Protobuf 定义中，新字段必须是 `optional` 或使用合理的默认值。
-- 禁止删除或重命名已发布的 Protobuf 字段号。
+- Manifest 使用 JSON 序列化（stdlib `encoding/json`），新增字段应使用指针或带 `omitempty` 标签。
+- 禁止删除或重命名已有的 JSON 字段名，优先使用 `json:"-"` 忽略旧字段。
 - 数据文件的 FileFooter 中 `MajorVersion` / `MinorVersion` 用于向后兼容。
+- ManifestStore 的 `_latest` 指针文件内容为版本号字符串，向前兼容（新版本号总是递增）。
 
 ---
 
@@ -180,6 +193,7 @@ api → table ↔ encode ↔ storage
 - **IDE/编辑器配置**：`.idea/`, `.vscode/`
 - **敏感信息**：密码、token、证书、私钥、`.env` 文件
 - **覆盖报告**：`coverage.txt`, `coverage.out`
+- **设计文档**：`/design/` 目录不提交
 
 > 参见 `.gitignore` 获取完整列表。
 
@@ -201,11 +215,12 @@ api → table ↔ encode ↔ storage
 ## 常用命令
 
 ```bash
-# 运行所有测试
-go test ./...
-
-# 带竞态检测
+# 运行所有测试（含竞态检测）
 go test -race ./...
+
+# 运行特定包测试
+go test -v ./api/
+go test -v ./table/
 
 # 运行 Benchmark
 go test -bench=. -benchmem ./benchmark/
