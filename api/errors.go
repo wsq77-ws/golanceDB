@@ -103,8 +103,8 @@ func IsStorageError(err error) bool {
 
 // sentinel errors for common situations
 var (
-	ErrDBClosed       = &Error{Code: ErrClosed, Op: "database", Message: "database is closed"}
-	ErrTableClosed    = &Error{Code: ErrClosed, Op: "table", Message: "table is closed"}
-	ErrTableNotFound  = &Error{Code: ErrNotFound, Op: "database", Message: "table not found"}
-	ErrWriterStopped  = &Error{Code: ErrInternal, Op: "table", Message: "async writer is not running"}
+	ErrDBClosed      = &Error{Code: ErrClosed, Op: "database", Message: "database is closed"}
+	ErrTableClosed   = &Error{Code: ErrClosed, Op: "table", Message: "table is closed"}
+	ErrTableNotFound = &Error{Code: ErrNotFound, Op: "database", Message: "table not found"}
+	ErrWriterStopped = &Error{Code: ErrInternal, Op: "table", Message: "async writer is not running"}
 )

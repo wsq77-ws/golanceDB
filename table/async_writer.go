@@ -27,7 +27,7 @@ type FlushResult struct {
 // to disk via a background goroutine. It batches multiple writes into
 // a single fragment when possible.
 type AsyncWriter struct {
-	store         storage.ObjectStore
+	store         storage.Store
 	manifestStore *ManifestStore
 	schema        *Schema
 	tablePath     string
@@ -51,7 +51,7 @@ type AsyncWriter struct {
 }
 
 // NewAsyncWriter creates an AsyncWriter with the given configuration.
-func NewAsyncWriter(store storage.ObjectStore, manifestStore *ManifestStore, schema *Schema, tablePath string, compression encode.CompressionType, maxBatchSize int, flushInterval time.Duration) *AsyncWriter {
+func NewAsyncWriter(store storage.Store, manifestStore *ManifestStore, schema *Schema, tablePath string, compression encode.CompressionType, maxBatchSize int, flushInterval time.Duration) *AsyncWriter {
 	return &AsyncWriter{
 		store:         store,
 		manifestStore: manifestStore,

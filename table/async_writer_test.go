@@ -10,7 +10,7 @@ import (
 	"github.com/glancedb/glancedb/storage"
 )
 
-func newAsyncTestSetup(t *testing.T, maxBatchSize int, flushInterval time.Duration) (*AsyncWriter, *ManifestStore, storage.ObjectStore, *Schema) {
+func newAsyncTestSetup(t *testing.T, maxBatchSize int, flushInterval time.Duration) (*AsyncWriter, *ManifestStore, storage.Store, *Schema) {
 	t.Helper()
 	dir := t.TempDir()
 	store := storage.NewLocalFS(dir)

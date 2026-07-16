@@ -17,7 +17,7 @@ func newTestTableSchema() *Schema {
 	})
 }
 
-func newTestTable(t *testing.T) (*Table, storage.ObjectStore) {
+func newTestTable(t *testing.T) (*Table, storage.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	store := storage.NewLocalFS("")

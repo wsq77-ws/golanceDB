@@ -53,7 +53,7 @@ GolanceDB 是一个纯 Go 实现的嵌入式向量数据库引擎，兼容 Lance
 │  Mini-Block 列式编码 · Zstd · LZ4               │
 ├──────────────────────────────────────────────────┤
 │               存储引擎                            │
-│  ObjectStore 接口 · LocalFS · BufferPool (LRU)  │
+│  Store 接口 · LocalFS · BufferPool (LRU)        │
 │  FileFooter (.lance 文件尾)                      │
 └──────────────────────────────────────────────────┘
 ```
@@ -242,7 +242,7 @@ glancedb/
 │   ├── constant.go         # Constant 布局
 │   └── compression.go      # Zstd / LZ4 压缩
 ├── storage/         # 存储引擎
-│   ├── object_store.go     # ObjectStore 接口
+│   ├── object_store.go     # Store 接口
 │   ├── local_fs.go         # 本地文件系统实现
 │   ├── buffer_pool.go      # Buffer Pool（LRU 缓存）
 │   └── file_footer.go      # .lance 文件尾

@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 )
 
-// LocalFS implements ObjectStore backed by the local filesystem.
+// LocalFS implements Store backed by the local filesystem.
 type LocalFS struct {
 	root string
 }

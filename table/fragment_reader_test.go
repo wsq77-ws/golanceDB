@@ -9,7 +9,7 @@ import (
 	"github.com/glancedb/glancedb/storage"
 )
 
-func newReaderTestEnv(t *testing.T) (*FragmentWriter, *FragmentReader, storage.ObjectStore) {
+func newReaderTestEnv(t *testing.T) (*FragmentWriter, *FragmentReader, storage.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	store := storage.NewLocalFS(dir)

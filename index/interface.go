@@ -21,9 +21,9 @@ type Index interface {
 	// Type returns the index type.
 	Type() IndexType
 
-	// Save persists the index to the given path via the ObjectStore.
-	Save(ctx context.Context, store storage.ObjectStore, path string) error
+	// Save persists the index to the given path via the Store.
+	Save(ctx context.Context, store storage.Store, path string) error
 
-	// Load reads the index from the given path via the ObjectStore.
-	Load(ctx context.Context, store storage.ObjectStore, path string) error
+	// Load reads the index from the given path via the Store.
+	Load(ctx context.Context, store storage.Store, path string) error
 }

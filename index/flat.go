@@ -90,8 +90,8 @@ type flatSnapshot struct {
 	Dim     int            `json:"dim"`
 }
 
-// Save persists the index to the given path as JSON via the ObjectStore.
-func (idx *FlatIndex) Save(ctx context.Context, store storage.ObjectStore, path string) error {
+// Save persists the index to the given path as JSON via the Store.
+func (idx *FlatIndex) Save(ctx context.Context, store storage.Store, path string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
@@ -110,8 +110,8 @@ func (idx *FlatIndex) Save(ctx context.Context, store storage.ObjectStore, path 
 	return nil
 }
 
-// Load reads the index from the given path via the ObjectStore.
-func (idx *FlatIndex) Load(ctx context.Context, store storage.ObjectStore, path string) error {
+// Load reads the index from the given path via the Store.
+func (idx *FlatIndex) Load(ctx context.Context, store storage.Store, path string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("index: %w", err)
 	}

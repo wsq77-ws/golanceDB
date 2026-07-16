@@ -53,7 +53,7 @@ GolanceDB is a pure Go embedded vector database engine compatible with the Lance
 │  Mini-Block columnar encoding · Zstd · LZ4       │
 ├──────────────────────────────────────────────────┤
 │               Storage Engine                      │
-│  ObjectStore interface · LocalFS · BufferPool(LRU)│
+│  Store interface · LocalFS · BufferPool(LRU)      │
 │  FileFooter (.lance file trailer)                │
 └──────────────────────────────────────────────────┘
 ```
@@ -242,7 +242,7 @@ glancedb/
 │   ├── constant.go         # Constant layout
 │   └── compression.go      # Zstd / LZ4 compression
 ├── storage/         # Storage engine
-│   ├── object_store.go     # ObjectStore interface
+│   ├── object_store.go     # Store interface
 │   ├── local_fs.go         # Local filesystem implementation
 │   ├── buffer_pool.go      # Buffer Pool (LRU cache)
 │   └── file_footer.go      # .lance file trailer

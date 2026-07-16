@@ -11,7 +11,7 @@ import (
 	"github.com/glancedb/glancedb/storage"
 )
 
-func newTestManifestStore(t *testing.T) (*ManifestStore, storage.ObjectStore) {
+func newTestManifestStore(t *testing.T) (*ManifestStore, storage.Store) {
 	t.Helper()
 	dir := t.TempDir()
 	store := storage.NewLocalFS(dir)

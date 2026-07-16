@@ -37,7 +37,7 @@ func (b *RecordBatch) Column(columnID int32) interface{} {
 
 // FragmentWriter writes column data into .lance files.
 type FragmentWriter struct {
-	store       storage.ObjectStore
+	store       storage.Store
 	schema      *Schema
 	fragmentID  int32
 	basePath    string
@@ -48,7 +48,7 @@ type FragmentWriter struct {
 }
 
 // NewFragmentWriter creates a FragmentWriter for the given fragment ID.
-func NewFragmentWriter(store storage.ObjectStore, schema *Schema, fragmentID int32, tablePath string, compression encode.CompressionType) *FragmentWriter {
+func NewFragmentWriter(store storage.Store, schema *Schema, fragmentID int32, tablePath string, compression encode.CompressionType) *FragmentWriter {
 	return &FragmentWriter{
 		store:       store,
 		schema:      schema,

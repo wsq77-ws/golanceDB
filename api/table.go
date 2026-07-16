@@ -22,7 +22,7 @@ type TableSchema = table.Schema
 type Table struct {
 	name   string
 	table  *table.Table
-	store  storage.ObjectStore
+	store  storage.Store
 	logger *Logger
 	dbPath string
 

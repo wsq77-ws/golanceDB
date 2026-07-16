@@ -15,7 +15,7 @@ import (
 // It manages table lifecycle and storage connectivity. Use Connect to create one.
 type Database struct {
 	path   string
-	store  storage.ObjectStore
+	store  storage.Store
 	tables map[string]*tableRef
 	mu     sync.RWMutex
 	logger *Logger

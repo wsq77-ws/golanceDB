@@ -16,7 +16,7 @@ type Table struct {
 	name          string
 	tablePath     string
 	schema        *Schema
-	store         storage.ObjectStore
+	store         storage.Store
 	manifestStore *ManifestStore
 	versionMgr    *VersionManager
 	compression   encode.CompressionType
@@ -28,13 +28,13 @@ type Table struct {
 
 // NewTable creates a new Table instance. It does NOT create files on disk.
 // Call Create() to initialize a new table on disk, or Open() to load an existing one.
-func NewTable(name string, tablePath string, schema *Schema, store storage.ObjectStore, compression encode.CompressionType) *Table {
+func NewTable(name string, tablePath string, schema *Schema, store storage.Store, compression encode.CompressionType) *Table {
 	return &Table{
 		name:           name,
 		tablePath:      tablePath,
 		schema:         schema,
 		store:          store,
-		manifestStore:  NewLocalManifestStore(filepath.Join(tablePath, "_versions")),
+		manifestStore:  NewManifestStore(store, filepath.Join(tablePath, "_versions")),
 		versionMgr:     NewVersionManager(10),
 		compression:    compression,
 		nextVersion:    1,
@@ -43,7 +43,7 @@ func NewTable(name string, tablePath string, schema *Schema, store storage.Objec
 }
 
 // Create initializes a new table on disk with an initial manifest (version 1).
-func Create(ctx context.Context, name string, tablePath string, schema *Schema, store storage.ObjectStore, compression encode.CompressionType) (*Table, error) {
+func Create(ctx context.Context, name string, tablePath string, schema *Schema, store storage.Store, compression encode.CompressionType) (*Table, error) {
 	t := NewTable(name, tablePath, schema, store, compression)
 
 	manifest := NewManifest(t.nextVersion, schema)
@@ -60,12 +60,12 @@ func Create(ctx context.Context, name string, tablePath string, schema *Schema, 
 }
 
 // Open loads an existing table from disk by reading the latest manifest.
-func Open(ctx context.Context, name string, tablePath string, store storage.ObjectStore, compression encode.CompressionType) (*Table, error) {
+func Open(ctx context.Context, name string, tablePath string, store storage.Store, compression encode.CompressionType) (*Table, error) {
 	t := &Table{
 		name:           name,
 		tablePath:      tablePath,
 		store:          store,
-		manifestStore:  NewLocalManifestStore(filepath.Join(tablePath, "_versions")),
+		manifestStore:  NewManifestStore(store, filepath.Join(tablePath, "_versions")),
 		versionMgr:     NewVersionManager(10),
 		compression:    compression,
 		nextVersion:    1,

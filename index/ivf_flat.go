@@ -242,8 +242,8 @@ type ivfFlatSnapshot struct {
 	NProbes       int            `json:"nprobes"`
 }
 
-// Save persists the index to the given path as JSON via the ObjectStore.
-func (idx *IVFFlatIndex) Save(ctx context.Context, store storage.ObjectStore, path string) error {
+// Save persists the index to the given path as JSON via the Store.
+func (idx *IVFFlatIndex) Save(ctx context.Context, store storage.Store, path string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("index: %w", err)
 	}
@@ -266,8 +266,8 @@ func (idx *IVFFlatIndex) Save(ctx context.Context, store storage.ObjectStore, pa
 	return nil
 }
 
-// Load reads the index from the given path via the ObjectStore.
-func (idx *IVFFlatIndex) Load(ctx context.Context, store storage.ObjectStore, path string) error {
+// Load reads the index from the given path via the Store.
+func (idx *IVFFlatIndex) Load(ctx context.Context, store storage.Store, path string) error {
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("index: %w", err)
 	}

@@ -26,7 +26,7 @@ func newTestSchema() *TableSchema {
 
 // makeBatch creates a test batch with the given row count.
 // startID 0 would create a zero-norm vector [0,0,0,0] which fails cosine distance,
-// so startID should be ≥ 1 for vector search tests.
+// startID should be ≥ 1 for vector search tests.
 func makeBatch(schema *table.Schema, startID int64, category string, n int) *table.RecordBatch {
 	batch := table.NewRecordBatch(schema, int64(n))
 	idCol := make([]int64, n)

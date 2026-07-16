@@ -10,14 +10,14 @@ import (
 
 // FragmentReader reads column data from .lance files.
 type FragmentReader struct {
-	store   storage.ObjectStore
+	store   storage.Store
 	schema  *Schema
 	encoder encode.ColumnEncoder
 }
 
 // NewFragmentReader creates a FragmentReader with the given compression type.
 // The compression must match what was used during writing.
-func NewFragmentReader(store storage.ObjectStore, schema *Schema, compression encode.CompressionType) *FragmentReader {
+func NewFragmentReader(store storage.Store, schema *Schema, compression encode.CompressionType) *FragmentReader {
 	return &FragmentReader{
 		store:   store,
 		schema:  schema,
